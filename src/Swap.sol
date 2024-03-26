@@ -1,200 +1,300 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.9;
-import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
-// import {AggregatorV3Interface} from "lib/chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
-import {IERC20} from "./IERC20.sol";
+pragma solidity ^0.8.13;
 
-contract Swap {
-    // interfaces
-    IERC20 public daiTokenAddr;
-    IERC20 public linkTokenAddr;
-    IERC20 public wethTokenAddr;
+import {IERC20} from "./interface/IERC20.sol";
+import {AggregatorV3Interface} from "lib/chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 
-    // contract addresses
-    address public constant ethAddress =
-        0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9; // Address of Ether (ETH)
-    address public constant linkAddress =
-        0x779877A7B0D9E8603169DdbD7836e478b4624789; // Address of Chainlink token (LINK)
-    address public constant daiAddress =
-        0x3e622317f8C93f7328350cF0B56d9eD4C620C5d6; // Address of Dai stablecoin (DAI)
+contract SwapContract {
+    // TSTATE VARIABLES
+    IERC20 dai;
+    IERC20 link;
+    IERC20 weth;
 
-    AggregatorV3Interface internal ethUsdPriceFeed;
-    AggregatorV3Interface internal linkUsdPriceFeed;
-    AggregatorV3Interface internal daiUsdPriceFeed;
+    AggregatorV3Interface eth_usd;
+    AggregatorV3Interface link_usd;
+    AggregatorV3Interface dai_usd;
 
-    constructor(
-        address _ethUsdPriceFeed,
-        address _linkUsdPriceFeed,
-        address _daiUsdPriceFeed
-    ) {
-        ethUsdPriceFeed = AggregatorV3Interface(_ethUsdPriceFeed);
-        linkUsdPriceFeed = AggregatorV3Interface(_linkUsdPriceFeed);
-        daiUsdPriceFeed = AggregatorV3Interface(_daiUsdPriceFeed);
+    // Events
+    event SwapSuccessful(
+        address indexed sender,
+        uint indexed amountA,
+        uint indexed amountB
+    );
 
-        daiTokenAddr = IERC20(daiAddress);
-        linkTokenAddr = IERC20(linkAddress);
-        wethTokenAddr = IERC20(ethAddress);
+    // Constructor to set the ERC-20 tokens being swapped
+    constructor() {
+        dai = IERC20(0x3e622317f8C93f7328350cF0B56d9eD4C620C5d6);
+
+        weth = IERC20(0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9);
+
+        link = IERC20(0x779877A7B0D9E8603169DdbD7836e478b4624789);
+
+        eth_usd = AggregatorV3Interface(
+            0x694AA1769357215DE4FAC081bf1f309aDC325306
+        );
+
+        link_usd = AggregatorV3Interface(
+            0xc59E3633BAAC79493d908e63626716e204A45EdF
+        );
+
+        dai_usd = AggregatorV3Interface(
+            0x14866185B1962B63C3Ea9E03Bc1da838bab34C19
+        );
     }
 
-    /**
-     * Returns the latest answer.
-     */
-    function getChainlinkDataFeedLatestAnswer(
-        AggregatorV3Interface priceFeed
-    ) public view returns (int) {
-        // prettier-ignore
-        (
-            /* uint80 roundID */,
-            int answer,
-            /*uint startedAt*/,
-            /*uint timeStamp*/,
-            /*uint80 answeredInRound*/
-        ) = priceFeed.latestRoundData();
-        return answer;
+    // Function to swap tokens A for tokens B
+    // function swapEthDai(uint256 _amountA) external {
+    //     require(msg.sender != address(0), "address zero detected");
+
+    //     require(_amountA > 0 , "Can't exchange zero amount");
+
+    //     require(weth.balanceOf(msg.sender) >= _amountA, "Insufficient Balance");
+
+    //     uint _amountB = 50;
+
+    //     require(dai.balanceOf(address(this)) >= _amountB, "Not enough tokenB");
+
+    //     weth.transferFrom(msg.sender, address(this), _amountA);
+
+    //     dai.transfer(msg.sender , _amountB);
+
+    //     emit SwapSuccessful(msg.sender, _amountA , _amountB);
+
+    // }
+    function swapEthDai(uint256 _amountA) external {
+        require(msg.sender != address(0), "address zero detected");
+
+        require(_amountA > 0, "Can't exchange zero amount");
+
+        require(weth.balanceOf(msg.sender) >= _amountA, "Insufficient Balance");
+
+        uint _amountB = uint(getDerivedPrice(eth_usd, dai_usd, 18));
+
+        require(dai.balanceOf(address(this)) >= _amountB, "Not enough tokenB");
+
+        weth.transferFrom(msg.sender, address(this), _amountA);
+
+        dai.transfer(msg.sender, _amountB);
+
+        emit SwapSuccessful(msg.sender, _amountA, _amountB);
     }
 
-    // swap ether for link
-    function swapEthForLink(uint256 _amount) external {
-        // getting prices
-        int ethPrice = getChainlinkDataFeedLatestAnswer(ethUsdPriceFeed);
-        int linkPrice = getChainlinkDataFeedLatestAnswer(linkUsdPriceFeed);
+    //  function swapEthLink(uint256 _amountA) external {
+    //     require(msg.sender != address(0), "address zero detected");
 
-        // convert eth amount to link
-        uint256 linkAmount = (_amount * uint256(ethPrice)) / uint256(linkPrice);
+    //     require(_amountA > 0 , "Can't exchange zero amount");
 
-        // confirming user balance
-        require(
-            wethTokenAddr.balanceOf(msg.sender) >= _amount,
-            "You dont not have enough tokens to swap"
-        );
+    //     require(weth.balanceOf(msg.sender) >= _amountA, "Insufficient Balance");
 
-        // transfer ether from user to contract
-        wethTokenAddr.transferFrom(msg.sender, address(this), _amount);
+    //     uint _amountB = 50;
 
-        // transfer link to user from contract
-        linkTokenAddr.transfer(msg.sender, linkAmount);
+    //     require(link.balanceOf(address(this)) >= _amountB, "Not enough tokenB");
+
+    //     weth.transferFrom(msg.sender, address(this), _amountA);
+
+    //     link.transfer(msg.sender , _amountB);
+
+    //     emit SwapSuccessful(msg.sender, _amountA , _amountB);
+
+    // }
+
+    function swapEthLink(uint256 _amountA) external {
+        require(msg.sender != address(0), "address zero detected");
+
+        require(_amountA > 0, "Can't exchange zero amount");
+
+        require(weth.balanceOf(msg.sender) >= _amountA, "Insufficient Balance");
+
+        uint _amountB = uint(getDerivedPrice(eth_usd, link_usd, 18));
+
+        require(link.balanceOf(address(this)) >= _amountB, "Not enough tokenB");
+
+        weth.transferFrom(msg.sender, address(this), _amountA);
+
+        link.transfer(msg.sender, _amountB);
+
+        emit SwapSuccessful(msg.sender, _amountA, _amountB);
     }
 
-    // swap link for ether
-    function swapLinkForEth(uint256 _amount) external {
-        // getting prices
-        int ethPrice = getChainlinkDataFeedLatestAnswer(ethUsdPriceFeed);
-        int linkPrice = getChainlinkDataFeedLatestAnswer(linkUsdPriceFeed);
+    //    function swapLinkDai(uint256 _amountA) external {
+    //         require(msg.sender != address(0), "address zero detected");
 
-        // convert eth amount to link
-        uint256 linkAmount = (_amount * uint256(linkPrice)) / uint256(ethPrice);
+    //         require(_amountA > 0 , "Can't exchange zero amount");
 
-        // confirming user balance
-        require(
-            linkTokenAddr.balanceOf(msg.sender) >= _amount,
-            "You dont not have enough tokens to swap"
-        );
+    //         require(link.balanceOf(msg.sender) >= _amountA, "Insufficient Balance");
 
-        // transfer ether from user to contract
-        require(
-            linkTokenAddr.transferFrom(msg.sender, address(this), _amount),
-            "transaction not succesful"
-        );
+    //         uint _amountB = 50;
 
-        // transfer link to user from contract
-        wethTokenAddr.transfer(msg.sender, linkAmount);
+    //         require(dai.balanceOf(address(this)) >= _amountB, "Not enough tokenB");
+
+    //         link.transferFrom(msg.sender, address(this), _amountA);
+
+    //         dai.transfer(msg.sender , _amountB);
+
+    //     emit SwapSuccessful(msg.sender, _amountA , _amountB);
+
+    // }
+
+    function swapLinkDai(uint256 _amountA) external {
+        require(msg.sender != address(0), "address zero detected");
+
+        require(_amountA > 0, "Can't exchange zero amount");
+
+        require(link.balanceOf(msg.sender) >= _amountA, "Insufficient Balance");
+
+        uint _amountB = uint(getDerivedPrice(link_usd, dai_usd, 18));
+
+        require(dai.balanceOf(address(this)) >= _amountB, "Not enough tokenB");
+
+        link.transferFrom(msg.sender, address(this), _amountA);
+
+        dai.transfer(msg.sender, _amountB);
+
+        emit SwapSuccessful(msg.sender, _amountA, _amountB);
     }
 
-    // swap dai for ether
-    function swapDaiForEth(uint256 _amount) external {
-        // getting prices
-        int ethPrice = getChainlinkDataFeedLatestAnswer(ethUsdPriceFeed);
-        int daiPrice = getChainlinkDataFeedLatestAnswer(daiUsdPriceFeed);
+    // function swapLinkEth(uint256 _amountA) external {
+    //     require(msg.sender != address(0), "address zero detected");
 
-        // convert dai for eth
-        uint256 daiAmount = (_amount * uint256(daiPrice)) / uint256(ethPrice);
+    //     require(_amountA > 0 , "Can't exchange zero amount");
 
-        // confirming user balance
-        require(
-            daiTokenAddr.balanceOf(msg.sender) >= _amount,
-            "You dont not have enough tokens to swap"
-        );
+    //     require(link.balanceOf(msg.sender) >= _amountA, "Insufficient Balance");
 
-        // transfer ether from user to contract
-        require(
-            daiTokenAddr.transferFrom(msg.sender, address(this), _amount),
-            "transaction not succesful"
-        );
+    //     uint _amountB = 50;
 
-        // transfer ether to user from contract
-        wethTokenAddr.transfer(msg.sender, daiAmount);
+    //     require(weth.balanceOf(address(this)) >= _amountB, "Not enough tokenB");
+
+    //     link.transferFrom(msg.sender, address(this), _amountA);
+
+    //     weth.transfer(msg.sender , _amountB);
+
+    //     emit SwapSuccessful(msg.sender, _amountA , _amountB);
+
+    // }
+
+    function swapLinkEth(uint256 _amountA) external {
+        require(msg.sender != address(0), "address zero detected");
+
+        require(_amountA > 0, "Can't exchange zero amount");
+
+        require(link.balanceOf(msg.sender) >= _amountA, "Insufficient Balance");
+
+        uint _amountB = uint(getDerivedPrice(link_usd, eth_usd, 18));
+
+        require(weth.balanceOf(address(this)) >= _amountB, "Not enough tokenB");
+
+        link.transferFrom(msg.sender, address(this), _amountA);
+
+        weth.transfer(msg.sender, _amountB);
+
+        emit SwapSuccessful(msg.sender, _amountA, _amountB);
     }
 
-    // swap ether for dai
-    function swapEthForDai(uint256 _amount) external {
-        // getting prices
-        int ethPrice = getChainlinkDataFeedLatestAnswer(ethUsdPriceFeed);
-        int daiPrice = getChainlinkDataFeedLatestAnswer(daiUsdPriceFeed);
+    //  function swapDaiLink(uint256 _amountA) external {
+    //     require(msg.sender != address(0), "address zero detected");
 
-        // convert eth amount to dai
-        uint256 ethAmount = (_amount * uint256(ethPrice)) / uint256(daiPrice);
+    //     require(_amountA > 0 , "Can't exchange zero amount");
 
-        // confirming user balance
-        require(
-            wethTokenAddr.balanceOf(msg.sender) >= _amount,
-            "You dont not have enough tokens to swap"
-        );
+    //     require(dai.balanceOf(msg.sender) >= _amountA, "Insufficient Balance");
 
-        // transfer ether from user to contract
-        require(
-            wethTokenAddr.transferFrom(msg.sender, address(this), _amount),
-            "transaction not succesful"
-        );
+    //     uint _amountB = 50;
 
-        // transfer dai to user from contract
-        daiTokenAddr.transfer(msg.sender, ethAmount);
+    //     require(link.balanceOf(address(this)) >= _amountB, "Not enough tokenB");
+
+    //     dai.transferFrom(msg.sender, address(this), _amountA);
+
+    //     link.transfer(msg.sender , _amountB);
+
+    //     emit SwapSuccessful(msg.sender, _amountA , _amountB);
+
+    // }
+
+    function swapDaiLink(uint256 _amountA) external {
+        require(msg.sender != address(0), "address zero detected");
+
+        require(_amountA > 0, "Can't exchange zero amount");
+
+        require(dai.balanceOf(msg.sender) >= _amountA, "Insufficient Balance");
+
+        uint _amountB = uint(getDerivedPrice(dai_usd, link_usd, 18));
+
+        require(link.balanceOf(address(this)) >= _amountB, "Not enough tokenB");
+
+        dai.transferFrom(msg.sender, address(this), _amountA);
+
+        link.transfer(msg.sender, _amountB);
+
+        emit SwapSuccessful(msg.sender, _amountA, _amountB);
     }
 
-    function swapLinkToDai(uint256 _amount) external {
-        // getting prices
-        int linkPrice = getChainlinkDataFeedLatestAnswer(linkUsdPriceFeed);
-        int daiPrice = getChainlinkDataFeedLatestAnswer(daiUsdPriceFeed);
+    // function swapDaiEth(uint256 _amountA) external {
+    //     require(msg.sender != address(0), "address zero detected");
 
-        // convert eth amount to dai
-        uint256 daiAmount = (_amount * uint256(linkPrice)) / uint256(daiPrice);
+    //     require(_amountA > 0 , "Can't exchange zero amount");
 
-        // confirming user balance
-        require(
-            linkTokenAddr.balanceOf(msg.sender) >= _amount,
-            "You dont not have enough tokens to swap"
-        );
+    //     require(dai.balanceOf(msg.sender) >= _amountA, "Insufficient Balance");
 
-        // transfer ether from user to contract
-        require(
-            linkTokenAddr.transferFrom(msg.sender, address(this), _amount),
-            "transaction not succesful"
-        );
+    //     uint _amountB = 50;
 
-        // transfer dai to user from contract
-        daiTokenAddr.transfer(msg.sender, daiAmount);
+    //     require(weth.balanceOf(address(this)) >= _amountB, "Not enough tokenB");
+
+    //     dai.transferFrom(msg.sender, address(this), _amountA);
+
+    //     weth.transfer(msg.sender , _amountB);
+
+    //             emit SwapSuccessful(msg.sender, _amountA , _amountB);
+
+    // }
+
+    function swapDaiEth(uint256 _amountA) external {
+        require(msg.sender != address(0), "address zero detected");
+
+        require(_amountA > 0, "Can't exchange zero amount");
+
+        require(dai.balanceOf(msg.sender) >= _amountA, "Insufficient Balance");
+
+        uint _amountB = uint(getDerivedPrice(dai_usd, eth_usd, 18));
+
+        require(weth.balanceOf(address(this)) >= _amountB, "Not enough tokenB");
+
+        dai.transferFrom(msg.sender, address(this), _amountA);
+
+        weth.transfer(msg.sender, _amountB);
+
+        emit SwapSuccessful(msg.sender, _amountA, _amountB);
     }
 
-    function swapDaiToLink(uint256 _amount) external {
-        // getting prices
-        int linkPrice = getChainlinkDataFeedLatestAnswer(linkUsdPriceFeed);
-        int daiPrice = getChainlinkDataFeedLatestAnswer(daiUsdPriceFeed);
+    function scalePrice(
+        int256 _price,
+        uint8 _priceDecimals,
+        uint8 _decimals
+    ) internal pure returns (int256) {
+        if (_priceDecimals < _decimals) {
+            return _price * int256(10 ** uint256(_decimals - _priceDecimals));
+        } else if (_priceDecimals > _decimals) {
+            return _price / int256(10 ** uint256(_priceDecimals - _decimals));
+        }
+        return _price;
+    }
 
-        // convert eth amount to dai
-        uint256 linkAmount = (_amount * uint256(daiPrice)) / uint256(linkPrice);
-
-        // confirming user balance
+    function getDerivedPrice(
+        AggregatorV3Interface _base,
+        AggregatorV3Interface _quote,
+        uint8 _decimals
+    ) public view returns (int256) {
         require(
-            daiTokenAddr.balanceOf(msg.sender) >= _amount,
-            "You dont not have enough tokens to swap"
+            _decimals > uint8(0) && _decimals <= uint8(18),
+            "Invalid _decimals"
         );
+        int256 decimals = int256(10 ** uint256(_decimals));
+        (, int256 basePrice, , , ) = _base.latestRoundData();
+        uint8 baseDecimals = _base.decimals();
+        basePrice = scalePrice(basePrice, baseDecimals, _decimals);
 
-        // transfer ether from user to contract
-        require(
-            daiTokenAddr.transferFrom(msg.sender, address(this), _amount),
-            "transaction not succesful"
-        );
+        (, int256 quotePrice, , , ) = _quote.latestRoundData();
+        uint8 quoteDecimals = _quote.decimals();
+        quotePrice = scalePrice(quotePrice, quoteDecimals, _decimals);
 
-        // transfer dai to user from contract
-        linkTokenAddr.transfer(msg.sender, linkAmount);
+        return (basePrice * decimals) / quotePrice;
     }
 }
